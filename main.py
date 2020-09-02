@@ -78,28 +78,31 @@ def take_random(x, amount):
 
 if __name__ == '__main__':
     S = pd.read_csv('office31-resnet50_feature/amazon_amazon.csv').values
-    T = pd.read_csv('office31-resnet50_feature/amazon_webcam.csv').values
+    T = pd.read_csv('office31-resnet50_feature/amazon_dslr.csv').values
 
     xs, ys = S[:, :-1], S[:, -1]
     xt, yt = T[:, :-1], T[:, -1]
     xs, ys = torch.from_numpy(xs).float(), torch.from_numpy(ys).long()
     xt, yt = torch.from_numpy(xt).float(), torch.from_numpy(yt).long()
 
+    xs, ys = xs.cuda(), ys.cuda()
+    xt, yt = xt.cuda(), yt.cuda()
+
     print(xs.shape, xt.shape)
 
-    emb_net = create_mlp(xs.shape[1], 512, nn.ELU(), hidden_sizes=(1000,), hidden_act=nn.ELU())
-    clf_net = create_mlp(512, 31, nn.Softmax(1), hidden_sizes=(), hidden_act=nn.ELU())
+    emb_net = create_mlp(xs.shape[1], 512, nn.ELU(), hidden_sizes=(1000,), hidden_act=nn.ELU()).cuda()
+    clf_net = create_mlp(512, 31, nn.Softmax(1), hidden_sizes=(), hidden_act=nn.ELU()).cuda()
 
-    opt = torch.optim.Adamax([*emb_net.parameters(), *clf_net.parameters()], lr=10e-5)
-    ce = nn.CrossEntropyLoss()
-    sl1 = nn.SmoothL1Loss()
-    kld = torch.nn.SmoothL1Loss(reduction='batchmean')
+    opt = torch.optim.Adamax([*emb_net.parameters(), *clf_net.parameters()], lr=10e-6)
+    ce = nn.CrossEntropyLoss().cuda()
+    sl1 = nn.SmoothL1Loss().cuda()
+    kld = torch.nn.SmoothL1Loss(reduction='batchmean').cuda()
 
     minibatches = minibatchify(xs, ys, batch_size=64)
 
-    mmd_rbf = MMD_loss(kernel_num=1)
+    mmd_rbf = MMD_loss(kernel_num=10)
 
-    max_epochs = 1000
+    max_epochs = 2000
     for ep in range(max_epochs):
         losses = []
         for x, y in minibatches:
@@ -112,16 +115,9 @@ if __name__ == '__main__':
             emb_t = emb_net(xt_b)
 
             nei = sl1(euclidean_distances(xt_b, xt_b), euclidean_distances(emb_t, emb_t))
-
-            # kx = euclidean_distances(xt_b, xt_b)
-            # kh = euclidean_distances(emb_t, emb_t)
-            # kx = kx / kx.sum(1, keepdim=True)
-            # kh = kh / kh.sum(1, keepdim=True)
-            # nei = kld(kx.log_softmax(1), kh)
-
             mmd = mmd_rbf(emb, emb_t)
 
-            loss = ce(pred, y) + 0.01*nei + mmd
+            loss = ce(pred, y) + mmd + nei
             loss.backward()
             losses.append(loss.detach().item())
 
@@ -129,7 +125,7 @@ if __name__ == '__main__':
 
         with torch.no_grad():
             emb = emb_net(xt)
-            pred_class = clf_net(emb).argmax(1).detach().numpy()
-            acc = np.mean(pred_class == yt.numpy())
+            pred_class = clf_net(emb).argmax(1).detach().cpu().numpy()
+            acc = np.mean(pred_class == yt.cpu().numpy())
             loss = np.mean(losses)
             print(f'{ep}: loss: {loss}, acc: {acc}')
