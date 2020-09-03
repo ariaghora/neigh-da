@@ -7,6 +7,9 @@ from abon_toolkit.kernels import rbf_kernel, euclidean_distances, mmd_rbf
 
 torch.manual_seed(13)
 
+cuda_avail = torch.cuda.is_available()
+dev = torch.device('cuda' if cuda_avail else 'cpu')
+
 
 class MMD_loss(nn.Module):
     def __init__(self, kernel_type='rbf', kernel_mul=2.0, kernel_num=5):
@@ -85,18 +88,18 @@ if __name__ == '__main__':
     xs, ys = torch.from_numpy(xs).float(), torch.from_numpy(ys).long()
     xt, yt = torch.from_numpy(xt).float(), torch.from_numpy(yt).long()
 
-    xs, ys = xs.cuda(), ys.cuda()
-    xt, yt = xt.cuda(), yt.cuda()
+    xs, ys = xs.to(dev), ys.to(dev)
+    xt, yt = xt.to(dev), yt.to(dev)
 
     print(xs.shape, xt.shape)
 
-    emb_net = create_mlp(xs.shape[1], 512, nn.ELU(), hidden_sizes=(1000,), hidden_act=nn.ELU()).cuda()
-    clf_net = create_mlp(512, 31, nn.Softmax(1), hidden_sizes=(), hidden_act=nn.ELU()).cuda()
+    emb_net = create_mlp(xs.shape[1], 512, nn.ELU(), hidden_sizes=(1000,), hidden_act=nn.ELU()).to(dev)
+    clf_net = create_mlp(512, 31, nn.Softmax(1), hidden_sizes=(), hidden_act=nn.ELU()).to(dev)
 
     opt = torch.optim.Adamax([*emb_net.parameters(), *clf_net.parameters()], lr=10e-6)
-    ce = nn.CrossEntropyLoss().cuda()
-    sl1 = nn.SmoothL1Loss().cuda()
-    kld = torch.nn.SmoothL1Loss(reduction='batchmean').cuda()
+    ce = nn.CrossEntropyLoss().to(dev)
+    sl1 = nn.SmoothL1Loss().to(dev)
+    kld = torch.nn.SmoothL1Loss(reduction='batchmean').to(dev)
 
     minibatches = minibatchify(xs, ys, batch_size=64)
 
