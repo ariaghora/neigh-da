@@ -117,10 +117,13 @@ if __name__ == '__main__':
             xt_b = take_random(xt, x.shape[0])
             emb_t = emb_net(xt_b)
 
+            pred_t = clf_net(emb_t)
+            ent = -torch.mean(pred_t * pred_t.log_softmax(1))
+
             nei = sl1(euclidean_distances(xt_b, xt_b), euclidean_distances(emb_t, emb_t))
             mmd = mmd_rbf(emb, emb_t)
 
-            loss = ce(pred, y) + mmd + nei
+            loss = ce(pred, y) + mmd + nei + ent
             loss.backward()
             losses.append(loss.detach().item())
 

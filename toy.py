@@ -1,13 +1,13 @@
-import torch
-from abon_toolkit.kernels import euclidean_distances
+import numpy as np
 
-a = torch.FloatTensor([[0,0,1], [0,0,1]])
-b = a.clone() + torch.FloatTensor([[0, 0, 0], [2,0,1]])
-b = b / b.sum(1, keepdim=True)
+def logsm(x):
+    ex = np.exp(x-np.max(x, 1))
+    return np.log(ex / ex.sum(1, keepdims=True))
 
-print(a, b)
+a = np.array([[0.3, 0.3, 0.4]])
 
-kld = torch.nn.KLDivLoss(reduction='batchmean')
+logsm(a)
 
-# print('L:', ce(a.log_softmax(1), b))
-print(euclidean_distances(a, b))
+e = -np.sum(a * logsm(a))
+
+print(e)
