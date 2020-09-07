@@ -80,8 +80,8 @@ def take_random(x, amount):
 
 
 if __name__ == '__main__':
-    S = pd.read_csv('office31-resnet50_feature/amazon_amazon.csv').values
-    T = pd.read_csv('office31-resnet50_feature/amazon_dslr.csv').values
+    S = pd.read_csv('office31-resnet50_feature/webcam_webcam.csv').values
+    T = pd.read_csv('office31-resnet50_feature/webcam_dslr.csv').values
 
     xs, ys = S[:, :-1], S[:, -1]
     xt, yt = T[:, :-1], T[:, -1]
@@ -94,18 +94,19 @@ if __name__ == '__main__':
     print(xs.shape, xt.shape)
 
     emb_net = create_mlp(xs.shape[1], 512, nn.ELU(), hidden_sizes=(1000,), hidden_act=nn.ELU()).to(dev)
-    clf_net = create_mlp(512, 31, nn.Softmax(1), hidden_sizes=(), hidden_act=nn.ELU()).to(dev)
+    clf_net = create_mlp(512, 31, nn.Identity(), hidden_sizes=(), hidden_act=nn.ELU()).to(dev)
 
     opt = torch.optim.Adamax([*emb_net.parameters(), *clf_net.parameters()], lr=10e-6)
     ce = nn.CrossEntropyLoss().to(dev)
     sl1 = nn.SmoothL1Loss().to(dev)
-    kld = torch.nn.SmoothL1Loss(reduction='batchmean').to(dev)
+    # kld = torch.nn.HingeEmbeddingLoss(reduction='batchmean').to(dev)
+    temp = 10
 
     minibatches = minibatchify(xs, ys, batch_size=64)
 
     mmd_rbf = MMD_loss(kernel_num=10)
 
-    max_epochs = 2000
+    max_epochs = 5000
     for ep in range(max_epochs):
         losses = []
         for x, y in minibatches:
@@ -113,17 +114,19 @@ if __name__ == '__main__':
 
             emb = emb_net(x)
             pred = clf_net(emb)
+            pred = torch.softmax(pred/temp, 1)
 
             xt_b = take_random(xt, x.shape[0])
             emb_t = emb_net(xt_b)
 
             pred_t = clf_net(emb_t)
-            ent = -torch.mean(pred_t * pred_t.log_softmax(1))
+            pred_t = torch.softmax(pred_t/temp, 1)
+            ent = -torch.mean(pred_t * pred_t.log_softmax(1)) 
 
             nei = sl1(euclidean_distances(xt_b, xt_b), euclidean_distances(emb_t, emb_t))
             mmd = mmd_rbf(emb, emb_t)
 
-            loss = ce(pred, y) + mmd + nei + ent
+            loss = ce(pred, y) + mmd + 0.01*nei + ent
             loss.backward()
             losses.append(loss.detach().item())
 
@@ -131,7 +134,7 @@ if __name__ == '__main__':
 
         with torch.no_grad():
             emb = emb_net(xt)
-            pred_class = clf_net(emb).argmax(1).detach().cpu().numpy()
+            pred_class = torch.softmax(clf_net(emb)/temp, 1).argmax(1).detach().cpu().numpy()
             acc = np.mean(pred_class == yt.cpu().numpy())
             loss = np.mean(losses)
-            print(f'{ep}: loss: {loss}, acc: {acc}')
+            print(f'\r{ep}: loss: {loss}, acc: {acc}', end='')
