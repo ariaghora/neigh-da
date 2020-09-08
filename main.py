@@ -107,7 +107,7 @@ if __name__ == '__main__':
 
     mmd_rbf = MMD_loss(kernel_num=10)
 
-    max_epochs = 100
+    max_epochs = 1
     for ep in range(max_epochs):
         losses = []
         for x, y in minibatches:
@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
             pred_t = clf_net(emb_t)
             pred_t = torch.softmax(pred_t/temp, 1)
-            ent = -torch.mean(pred_t * pred_t.log_softmax(1)) 
+            ent = -torch.mean(torch.sum(pred_t * pred_t.log_softmax(1), 1))
 
             nei = sl1(euclidean_distances(xt_b, xt_b), euclidean_distances(emb_t, emb_t))
             mmd = mmd_rbf(emb, emb_t)
@@ -139,3 +139,6 @@ if __name__ == '__main__':
             acc = np.mean(pred_class == yt.cpu().numpy())
             loss = np.mean(losses)
             print(f'\r{ep}: loss: {loss}, acc: {acc}, temp: {temp}', end='')
+
+    torch.save(emb_net, 'emb_net.pth')
+    torch.save(clf_net, 'clf_net.pth')
